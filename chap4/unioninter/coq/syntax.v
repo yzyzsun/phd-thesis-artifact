@@ -177,7 +177,8 @@ Defined.
 (**********************************)
 
 Lemma sub_refl : forall A, A <: A.
-  induction A; eauto.
+  induction A;
+  auto.
 Defined.
 
 #[export]

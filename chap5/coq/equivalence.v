@@ -223,7 +223,7 @@ Hint Constructors dtyping : core.
 
 (* soundness w.r.t Dunfield's type system *)
 
-Lemma dt_sound : forall G e1 e2 A,
+Lemma dt_complete : forall G e1 e2 A,
     dtyping G e1 A e2 -> 
     typing G e2 A.
 Proof.

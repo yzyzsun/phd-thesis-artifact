@@ -1165,11 +1165,12 @@ Qed.
 (*** Disjointness Equivalence ***)
 (********************************)
 
-Definition disjSpec A B := forall C, Ord C -> not ((sub C A) /\ (sub C B)).
+Definition DisjSpec A B := forall C, Ord C -> not ((sub C A) /\ (sub C B)).
+Notation "A *s B" := (DisjSpec A B) (at level 80, B at next level).
 
-Lemma disj_sound : forall A B, disjSpec A B -> not (COSTS A B).
+Lemma disj_sound : forall A B, DisjSpec A B -> not (COSTS A B).
 Proof.
-    introv DSpec. unfold disjSpec in DSpec.
+    introv DSpec. unfold DisjSpec in DSpec.
     unfold not in DSpec.
     unfold COSTS. unfold not.
     introv CST.
@@ -1178,11 +1179,11 @@ Proof.
     apply* DSpec.
 Qed.
 
-Lemma disj_complete : forall A B, not (COSTS A B) -> disjSpec A B.
+Lemma disj_complete : forall A B, not (COSTS A B) -> DisjSpec A B.
 Proof.
     introv CST. unfold COSTS in CST.
     unfold not in CST.
-    unfold disjSpec. unfold not.
+    unfold DisjSpec. unfold not.
     introv DSpec [Sub1 Sub2].
     apply* CST.
 Qed.
