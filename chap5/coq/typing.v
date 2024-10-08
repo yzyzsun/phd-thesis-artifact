@@ -312,6 +312,26 @@ Inductive dynSemantics : exp -> exp -> Prop :=
         A <: C ->
         dynSemantics (e_app (e_merg v1 v2) v) (e_merg (e_app v1 v) (e_app v2 v)).
 
+Inductive project : exp -> exp -> Prop :=
+   | prj_left : forall v1 v2 l A B,
+        ptyp v1 A ->
+        ptyp v2 B ->
+        A <: t_rcd l t_top ->
+        not (B <: t_rcd l t_top) ->
+        project (e_prj (e_merg v1 v2) l) (e_prj v1 l)
+   | prj_right : forall v1 v2 l A B,
+        ptyp v1 A ->
+        ptyp v2 B ->
+        not (A <: t_rcd l t_top) ->
+        B <: t_rcd l t_top ->
+        project (e_prj (e_merg v1 v2) l) (e_prj v2 l)
+   | prj_both : forall v1 v2 l A B,
+        ptyp v1 A ->
+        ptyp v2 B ->
+        A <: t_rcd l t_top ->
+        B <: t_rcd l t_top ->
+        project (e_prj (e_merg v1 v2) l) (e_merg (e_prj v1 l) (e_prj v2 l)).
+
 (* defns Reduction *)
 Reserved Notation "e ~~> e'" (at level 80).
 Inductive step : exp -> exp -> Prop :=    (* defn step *)
@@ -342,8 +362,11 @@ Inductive step : exp -> exp -> Prop :=    (* defn step *)
      step (e_prj e l) (e_prj e' l)
  | step_prjv : forall (l:nat) (v v':exp) (A:typ),
      value v ->
-     tred v A v' ->
-     step (e_prj (e_rcd l v A) l) v'
+     step (e_prj (e_rcd l v A) l) v
+ | step_prjm : forall (l:nat) (v1 v2 v:exp),
+     value (e_merg v1 v2) ->
+     project (e_prj (e_merg v1 v2) l) v ->
+     step (e_prj (e_merg v1 v2) l) v
  | step_ann : forall (e:exp) (A:typ) (e':exp),
      (* not (value (e_ann e A)) -> *)
      step e e' ->
@@ -907,6 +930,17 @@ Proof.
   inductions Typ; eauto.
   - eapply sub_transitivity in Sub; eauto.
   - inverts* Sub.
+Qed.
+
+Lemma inv_rcd : forall G l e D A,
+    typing G (e_rcd l e D) A ->
+    typing G e D /\ subtyping (t_rcd l D) A.
+Proof.
+  introv Typ.
+  inductions Typ; eauto.
+  forwards* [temp Sub]: IHTyp e D.
+  split*.
+  eapply sub_transitivity; eauto.
 Qed.
 
 Lemma inv_rcd_sub : forall G l e D A,
@@ -1494,7 +1528,46 @@ Proof.
           forwards*: pexpr_ptyp_infer H.
         }
   - (*prj*)
-    admit.
+    inverts* Red.
+    + apply inv_rcd in Typ.
+      destruct Typ as [Typ Sub].
+      inverts* Sub.
+    + inductions H3.
+      * apply inv_merge in Typ.
+        destruct Typ as [T1 [T2 [Typ1 [Typ2 Sub]]]].
+        inverts* Sub.
+        apply pexpr_ptype_sub_dir_type with (B := B) in Typ2; auto.
+        forwards Sub1: sub_transitivity Typ2 H7.
+        forwards* Sub2: s_rcd l A t_top.
+        forwards: sub_transitivity Sub1 Sub2.
+        contradiction.
+        inverts H1. inverts* H4.
+      * apply inv_merge in Typ.
+        destruct Typ as [T1 [T2 [Typ1 [Typ2 Sub]]]].
+        inverts* Sub.
+        apply pexpr_ptype_sub_dir_type with (B := A0) in Typ1; auto.
+        forwards Sub1: sub_transitivity Typ1 H7.
+        forwards* Sub2: s_rcd l A t_top.
+        forwards: sub_transitivity Sub1 Sub2.
+        contradiction.
+        inverts H1. inverts* H4.
+      * apply inv_merge in Typ.
+        destruct Typ as [T1 [T2 [Typ1 [Typ2 Sub]]]].
+        inverts* Sub.
+        {
+          inverts H1. inverts H4.
+          assert (typing [] (e_prj v1 l) A). eauto.
+          eapply typ_sub. apply* typ_merg. apply typ_prj.
+          forwards*: pexpr_infer_ptyp H8 H0 Typ2.
+          apply* s_andb.
+        }
+        {
+          inverts H1. inverts H4.
+          assert (typing [] (e_prj v2 l) A). eauto.
+          eapply typ_sub. apply* typ_merg. apply typ_prj.
+          forwards*: pexpr_infer_ptyp H6 H Typ1.
+          apply* s_andc.
+        }
   - (*switch*)
     inverts* Red.
     (* when lies in first branch *)
@@ -1530,7 +1603,7 @@ Proof.
     specialize (TEMP1 A).
     simpl_env in *.
     forwards*: TEMP1.
-Admitted.
+Qed.
 
 Lemma pexpr_dec : forall e, lc_exp e -> pexpr e \/ ~ pexpr e.
 Proof.
@@ -1572,7 +1645,7 @@ Qed.
 
 
 #[export]
-Hint Constructors getInType dynSemantics : core.
+Hint Constructors getInType dynSemantics project : core.
 
 Lemma exists_intype_pexpr : forall p,
   pexpr p -> exists A, getInType p A.
@@ -1801,6 +1874,38 @@ Proof.
   eapply sub_transitivity in H; eauto.
 Qed.
 
+Lemma project_progress : forall v1 v2 l A,
+  pexpr v1 -> pexpr v2 ->
+  typing [] (e_merg v1 v2) (t_rcd l A) ->
+  exists e, project (e_prj (e_merg v1 v2) l) e.
+Proof.
+  intros * Hv1 Hv2 Typ.
+  apply inv_merge in Typ.
+  destruct Typ as [A1 [A2 [Typ1 [Typ2 Sub]]]].
+  forwards* TEMP1: exists_ptype_pexpr Hv1.
+  destruct TEMP1 as [T1 PTYP1].
+  forwards* TEMP2: exists_ptype_pexpr Hv2.
+  destruct TEMP2 as [T2 PTYP2].
+  forwards* DEC1: sub_dec_size T1 (t_rcd l t_top).
+  forwards* DEC2: sub_dec_size T2 (t_rcd l t_top).
+  destruct DEC1 as [Sub1 | NSub1].
+  destruct DEC2 as [Sub2 | NSub2].
+  exists*. exists*.
+  destruct DEC2 as [Sub2 | NSub2].
+  exists*.
+  (*this is contradiction*)
+  inverts Sub.
+  - forwards*: pexpr_ptype_sub_dir_type Hv1.
+    forwards: sub_transitivity H H2.
+    forwards*: s_rcd l A t_top.
+    forwards: sub_transitivity H0 H1.
+    contradiction.
+  - forwards*: pexpr_ptype_sub_dir_type Hv2.
+    forwards: sub_transitivity H H2.
+    forwards*: s_rcd l A t_top.
+    forwards: sub_transitivity H0 H1.
+    contradiction. 
+Qed.
 
 Lemma progress : forall e T,
 typing nil e T -> (value e) \/ (exists e', e ~~> e').
@@ -1877,7 +1982,26 @@ intros EQ; subst
    apply step_rcd; auto.
    forwards*: typing_regular Typ.
 (*case typ-prj*)
- - right. admit.
+ - right.
+   forwards*: IHTyp.
+   destruct H.
+   + inverts H. inverts H0.
+      * apply inv_int in Typ.
+        destruct Typ. inverts H0.
+      * apply inv_abs_sub'' in Typ.
+        destruct Typ. inverts H1.
+      * apply inv_rcd_sub in Typ.
+        destruct Typ as [Typ Sub].
+        inverts Sub.
+        exists e0.
+        applys* step_prjv.
+      * apply inv_top in Typ.
+        destruct Typ. inverts H0.
+      * apply inv_null in Typ.
+        destruct Typ. inverts H0.
+      * forwards*: project_progress H H1. 
+   + destruct H.
+     exists (e_prj x l). apply* step_prj.
 (*case typ-merge*)
  - 
    forwards* TEMP1: IHTyp1.
@@ -1922,4 +2046,4 @@ intros EQ; subst
    apply step_fix.
    apply typing_regular in Typ'.
    destruct~ Typ'.
-Admitted.
+Qed.
