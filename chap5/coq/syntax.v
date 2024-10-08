@@ -27,27 +27,35 @@ Require Import LibTactics.
 
 Inductive typ : Set :=  (* types *)
  | t_top   : typ
+ | t_null  : typ
  | t_int   : typ
  | t_bot   : typ
  | t_arrow : typ -> typ -> typ
+ | t_rcd   : nat -> typ -> typ
  | t_union : typ -> typ -> typ
  | t_and   : typ -> typ -> typ.
 
 Lemma eq_dec : forall x y:typ, {x = y} + {x <> y}.
 Proof.
- decide equality; auto.
+ decide equality.
+ apply eq_nat_dec.
 Defined.
 
 (* defns Subtyping *)
 Reserved Notation "A <: B" (at level 80).
 Inductive subtyping : typ -> typ -> Prop :=    (* defn subtyping *)
  | s_top : forall A, A <: t_top
+ | s_null :
+     t_null <: t_null
  | s_int :
      t_int <: t_int
  | s_arrow : forall (A1 A2 B1 B2:typ),
      B1 <: A1 ->
      A2 <: B2 ->
      (t_arrow A1 A2) <: (t_arrow B1 B2)
+ | s_rcd : forall (l:nat) (A B:typ),
+     A <: B ->
+     (t_rcd l A) <: (t_rcd l B)
  | s_ora : forall (A1 A2 A:typ),
      A1 <: A ->
      A2 <: A ->
@@ -84,6 +92,8 @@ Hint Constructors subtyping : core.
 
 Inductive Ord : typ -> Prop :=
 | o_int   : Ord t_int
+| o_null  : Ord t_null
+| o_rcd   : forall l t, Ord (t_rcd l t)
 | o_arrow : forall t1 t2, Ord (t_arrow t1 t2).
 
 #[export]
@@ -135,6 +145,10 @@ generalize H0 H; clear H0; clear H; generalize A; clear A.
 - intros; inductions H0; eauto. 
 - intros; inductions H; eauto.
 - intros; inductions H; eauto.
+- intros; inductions H; eauto.
+- induction C; intros; try solve [inverts* H0].
+  induction A; try solve[inverts* H].
+  inverts H0; inverts* H. 
 - induction C; intros; try solve [inverts* H0].
   induction A; try solve[inverts* H].
   inverts H0; inverts* H. 

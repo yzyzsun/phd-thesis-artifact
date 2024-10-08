@@ -46,8 +46,11 @@ Inductive exp : Set :=  (*r expression *)
  | e_ann    : exp -> typ -> exp
  | e_abs    : exp -> typ -> typ -> exp
  | e_app    : exp -> exp -> exp
+ | e_rcd    : nat -> exp -> typ -> exp
+ | e_prj    : exp -> nat -> exp
  | e_merg   : exp -> exp -> exp
  | e_top    : exp
+ | e_null   : exp
  | e_typeof : exp -> typ -> exp -> typ -> exp -> exp
  | e_fix    : exp -> typ -> exp.
 
@@ -66,8 +69,11 @@ Fixpoint open_exp_wrt_exp_rec (k:nat) (e_5:exp) (e__6:exp) {struct e__6}: exp :=
   | (e_ann e A) => e_ann (open_exp_wrt_exp_rec k e_5 e) A
   | (e_abs e A B) => e_abs (open_exp_wrt_exp_rec (S k) e_5 e) A B
   | (e_app e1 e2) => e_app (open_exp_wrt_exp_rec k e_5 e1) (open_exp_wrt_exp_rec k e_5 e2)
+  | (e_rcd l e A) => e_rcd l (open_exp_wrt_exp_rec k e_5 e) A
+  | (e_prj e l) => e_prj (open_exp_wrt_exp_rec k e_5 e) l
   | (e_merg e1 e2) => e_merg (open_exp_wrt_exp_rec k e_5 e1) (open_exp_wrt_exp_rec k e_5 e2)
   | e_top         => e_top
+  | e_null        => e_null
   | (e_typeof e A e1 B e2) => e_typeof (open_exp_wrt_exp_rec k e_5 e) A (open_exp_wrt_exp_rec (S k) e_5 e1) B (open_exp_wrt_exp_rec (S k) e_5 e2)
   | (e_fix e A) => e_fix (open_exp_wrt_exp_rec (S k) e_5 e) A
   end.
@@ -98,12 +104,20 @@ Inductive lc_exp : exp -> Prop :=    (* defn lc_exp *)
      (lc_exp e1) ->
      (lc_exp e2) ->
      (lc_exp (e_app e1 e2))
+ | lc_e_rcd : forall (l:nat) (e:exp) A,
+     (lc_exp e) ->
+     (lc_exp (e_rcd l e A))
+ | lc_e_prj : forall (e:exp) (l:nat),
+     (lc_exp e) ->
+     (lc_exp (e_prj e l))
  | lc_e_merg : forall (e1:exp) (e2:exp),
      (lc_exp e1) ->
      (lc_exp e2) ->
      (lc_exp (e_merg e1 e2))
  | lc_e_top :
       lc_exp e_top
+ | lc_e_null :
+      lc_exp e_null
  | lc_e_typeof : forall (L:vars) (e:exp) (A:typ) (e1:exp) (B:typ) (e2:exp),
      (lc_exp e) ->
      ( forall x , x \notin  L  -> lc_exp  ( open_exp_wrt_exp e1 (e_var_f x) )  ) ->
@@ -125,8 +139,11 @@ Fixpoint fv_exp (e_5:exp) : vars :=
   | (e_ann e A) => (fv_exp e)
   | (e_abs e A B) => (fv_exp e)
   | (e_app e1 e2) => (fv_exp e1) \u (fv_exp e2)
+  | (e_rcd l e A) => (fv_exp e)
+  | (e_prj e l) => (fv_exp e)
   | (e_merg e1 e2) => (fv_exp e1) \u (fv_exp e2)
   | (e_top)       => {}
+  | (e_null)      => {}
   | (e_typeof e A e1 B e2) => (fv_exp e) \u (fv_exp e1) \u (fv_exp e2)
   | (e_fix e A) => fv_exp e
 end.
@@ -140,8 +157,11 @@ Fixpoint subst_exp (e_5:exp) (x5:var) (e__6:exp) {struct e__6} : exp :=
   | (e_ann e A) => e_ann (subst_exp e_5 x5 e) A
   | (e_abs e A B) => e_abs (subst_exp e_5 x5 e) A B
   | (e_app e1 e2) => e_app (subst_exp e_5 x5 e1) (subst_exp e_5 x5 e2)
+  | (e_rcd l e A) => e_rcd l (subst_exp e_5 x5 e) A
+  | (e_prj e l) => e_prj (subst_exp e_5 x5 e) l
   | (e_merg e1 e2) => e_merg (subst_exp e_5 x5 e1) (subst_exp e_5 x5 e2)
   | (e_top)    => e_top
+  | (e_null)   => e_null
   | (e_typeof e A e1 B e2) => e_typeof (subst_exp e_5 x5 e) A (subst_exp e_5 x5 e1) B (subst_exp e_5 x5 e2)
   | (e_fix e A) => e_fix (subst_exp e_5 x5 e) A
   end.
@@ -155,8 +175,13 @@ Inductive pexpr : exp -> Prop :=    (* defn pexpr *)
  | pexpr_abs : forall (e:exp) (A B:typ),
      lc_exp (e_abs e A B) ->
      pexpr (e_abs e A B)
+ | pexpr_rcd : forall l e A,
+     pexpr e ->
+     pexpr (e_rcd l e A)
  | pexpr_top :
      pexpr e_top
+ | pexpr_null :
+     pexpr e_null
  | pexpr_merg : forall p1 p2,
     pexpr p1 ->
     pexpr p2 ->
@@ -179,8 +204,13 @@ Inductive ptyp : exp -> typ -> Prop :=    (* defn pexpr *)
  | ptyp_abs : forall (e:exp) (A B:typ),
      lc_exp (e_abs e A B) ->
      ptyp (e_abs e A B) (t_arrow A B)
+ | ptyp_rcd : forall l e A,
+     lc_exp (e_rcd l e A) ->
+     ptyp (e_rcd l e A) (t_rcd l A)
  | ptyp_top :
      ptyp e_top t_top
+ | ptyp_null :
+     ptyp e_null t_null
  | ptyp_merg : forall p1 p2 A B,
     ptyp p1 A ->
     ptyp p2 B ->
@@ -203,6 +233,10 @@ Inductive tred : exp -> typ -> exp -> Prop := (*typed red*)
     lc_exp (e_abs e A1 B1) ->
     (t_arrow A1 B1) <: (t_arrow A2 B2) ->
     tred (e_abs e A1 B1) (t_arrow A2 B2) (e_abs e A1 B1)
+ | tred_rcd : forall l e A B,
+    lc_exp (e_rcd l e A) ->
+    (t_rcd l A) <: (t_rcd l B) ->
+    tred (e_rcd l e A) (t_rcd l B) (e_rcd l e A)
  | tred_mergev1 : forall p1 p2 p1' A,
     lc_exp p2 ->
     Ord A ->
@@ -220,6 +254,9 @@ Inductive tred : exp -> typ -> exp -> Prop := (*typed red*)
  | tred_top : forall p,
     lc_exp p ->
     tred p t_top e_top
+ | tred_null : forall p,
+    lc_exp p ->
+    tred p t_null e_null
  | tred_or1 : forall p p' A B,
     tred p A p' ->
     (* ptyp p T ->
@@ -245,7 +282,11 @@ Inductive getInType : exp -> typ -> Prop :=
   | intyp_int : forall i,
       getInType (e_lit i) t_bot
   | intyp_top :
-      getInType e_top t_bot.
+      getInType e_top t_bot
+  | intyp_null :
+      getInType e_null t_bot
+  | intyp_rcd : forall l e A,
+      getInType (e_rcd l e A) t_bot.
   
 
 Inductive dynSemantics : exp -> exp -> Prop :=
@@ -292,6 +333,17 @@ Inductive step : exp -> exp -> Prop :=    (* defn step *)
      value (e_merg p1 p2) ->
      dynSemantics (e_app (e_merg p1 p2) v) e' ->
      e_app (e_merg p1 p2) v ~~> e'
+ | step_rcd : forall (l:nat) (e e':exp) (A:typ),
+     lc_exp e ->
+     step e e' ->
+     step (e_rcd l e A) (e_rcd l e' A)
+ | step_prj : forall (e e':exp) (l:nat),
+     step e e' ->
+     step (e_prj e l) (e_prj e' l)
+ | step_prjv : forall (l:nat) (v v':exp) (A:typ),
+     value v ->
+     tred v A v' ->
+     step (e_prj (e_rcd l v A) l) v'
  | step_ann : forall (e:exp) (A:typ) (e':exp),
      (* not (value (e_ann e A)) -> *)
      step e e' ->
@@ -353,6 +405,12 @@ Inductive typing : ctx -> exp -> typ -> Prop :=    (* defn typing *)
  | typ_abs : forall (L:vars) (G:ctx) (e:exp) (A B:typ),
      (forall x , x \notin L -> typing ([(x, A)] ++ G) (open_exp_wrt_exp e (e_var_f x)) B)  ->
      typing G (e_abs e A B) (t_arrow A B)
+ | typ_rcd : forall (G:ctx) (l:nat) (e:exp) (A:typ),
+     typing G e A ->
+     typing G (e_rcd l e A) (t_rcd l A)
+ | typ_prj : forall (G:ctx) (e:exp) (l:nat) (A:typ),
+     typing G e (t_rcd l A) ->
+     typing G (e_prj e l) A
  | typ_merg : forall (G:ctx) (e1 e2:exp) (A B:typ),
      typing G e1 A ->
      typing G e2 B ->
@@ -360,6 +418,9 @@ Inductive typing : ctx -> exp -> typ -> Prop :=    (* defn typing *)
  | typ_top: forall (G:ctx),
      uniq G ->
      typing G e_top t_top
+ | typ_null: forall (G:ctx),
+     uniq G ->
+     typing G e_null t_null
  | typ_typeof : forall (L:vars) (G:ctx) (e:exp) (A:typ) (e1:exp) (B:typ) (e2:exp) (C:typ),
      typing G e (t_union A B) ->
      ( forall x , x \notin  L  -> typing ([(x, A)] ++ G) (open_exp_wrt_exp e1 (e_var_f x))  C) ->
@@ -421,7 +482,7 @@ Lemma subst_ee_fresh : forall x u e,
 Proof with auto.
   induction e; simpl; intros; f_equal*.
   destruct (a==x)...
-  absurd_hyp H; fsetdec.
+  contradict H; fsetdec.
 Qed.
 
 (** Substitution distributes on the open operation. *)
@@ -544,8 +605,11 @@ Proof.
   - pick fresh x and apply typ_abs.
     forwards*: H0 x ([(x, A)] ++ E) G F.
     simpl_env; auto.
+  - apply* typ_rcd.
+  - apply* typ_prj.
   - apply* typ_merg.
   - apply* typ_top.
+  - apply* typ_null.
   - pick fresh x and apply typ_typeof; auto.
     forwards*: H0 x ([(x, A)] ++ E) G F.
     simpl_env; auto.
@@ -599,9 +663,14 @@ inductions TypT; introv; simpl.
    rewrite_env (y ~ A ++ E).
    destruct H4. auto.
    apply typing_regular in TypU. destruct~ TypU.
+ - (*case rcd*)
+   apply* typ_rcd.
+ - (*case prj*)
+   apply* typ_prj.
  - (*case merge*)
    apply typ_merg; eauto.
  - apply* typ_top.
+ - apply* typ_null.
  - pick fresh y.
    apply typ_typeof with (L:=union L
    (union (singleton x)
@@ -665,6 +734,8 @@ Proof.
   inverts H.
   inverts* H0.
   inverts* H0.
+  inverts* H0.
+  inverts* H0.
 Qed.
 
 
@@ -699,6 +770,9 @@ Proof.
   - (*case top*)
     inverts Red2; auto. 
     inverts Ord. inverts Ord. inverts Ord.
+  - (*case null*)
+    inverts Red2; auto. 
+    inverts Ord. inverts Ord. inverts Ord.
 Qed.
 
 Lemma pexpr_inf_btm_false : forall p A,
@@ -720,6 +794,8 @@ Proof.
   induction H; intros.
   inverts* H0.
   inverts* H0.
+  inverts* H0.
+  inverts* H0.
 Qed.
 
 Lemma ptyp_unique : forall w A B, 
@@ -728,6 +804,8 @@ Proof.
   introv Typ1 Typ2. gen B.
   induction Typ1; intros.
   inverts Typ2; auto.
+  inverts Typ2. auto.
+  inverts Typ2. auto.
   inverts Typ2. auto.
   inverts Typ2. auto.
   inverts Typ2.
@@ -831,6 +909,42 @@ Proof.
   - inverts* Sub.
 Qed.
 
+Lemma inv_rcd_sub : forall G l e D A,
+    typing G (e_rcd l e D) A ->
+    typing G (e_rcd l e D) (t_rcd l D)
+           /\ subtyping (t_rcd l D) A.
+Proof.
+  introv Typ.
+  inductions Typ; eauto.
+  - forwards* [temp Sub]: IHTyp e D.
+    split*.
+    eapply sub_transitivity; eauto. 
+Qed.
+
+Lemma inv_rcd_union : forall G l e D A A1 A2,
+    typing G (e_rcd l e D) A ->
+    subtyping A (t_union A1 A2) ->
+    typing G (e_rcd l e D) A1 \/ typing G (e_rcd l e D) A2.
+Proof.
+  introv Typ Sub.
+  inductions Typ; eauto.
+  - eapply sub_transitivity in Sub; eauto.
+  - inverts* Sub.
+Qed.
+
+Lemma inv_null : forall E A,
+typing E e_null A -> typing E e_null t_null /\ subtyping t_null A.
+Proof.
+  introv Typ.
+  inductions Typ.
+  (*case typ_sub*)
+ - forwards* : IHTyp. destruct H0.
+   split*.
+   eapply sub_transitivity; eauto.
+  (*case typ_null*)
+ - split*.
+Qed.
+
 Lemma inv_top : forall E A,
 typing E e_top A -> typing E e_top t_top /\ subtyping t_top A.
 Proof.
@@ -884,7 +998,11 @@ Proof.
    inverts* H0.
  - inverts Typ.
    eapply inv_abs_union in H0; eauto.
+ - inverts Typ.
+   eapply inv_rcd_union in H0; eauto.
  - apply inv_top in Typ. destruct Typ.
+   inverts* H0.
+ - apply inv_null in Typ. destruct Typ.
    inverts* H0.
  - (*Case merge*)
     apply inv_merge in Typ.
@@ -911,7 +1029,13 @@ Proof.
     apply inv_abs_sub'' in Typ.
     destruct Typ; auto.
   - inverts H.
+    apply inv_rcd_sub in Typ.
+    destruct Typ; auto.
+  - inverts H.
     apply inv_top in Typ.
+    destruct Typ; auto.
+  - inverts H.
+    apply inv_null in Typ.
     destruct Typ; auto.
   - inverts H.
     apply inv_merge in Typ.
@@ -941,14 +1065,16 @@ forall B, typing nil w B -> typing nil w' A.
 Proof.
   introv Val Red.
   induction Red; introv Typ; eauto.
-  (* - case int
-    assert (typing nil (e_lit i5) infer t_int); auto.
-    admit. *)
   - (*case arrow*)
     forwards*: typing_regular Typ. destruct H1.
     apply inv_abs_sub'' in Typ.
     destruct Typ as [Typ Sub].
-    assert (typing nil (e_abs e A1 B1) (t_arrow A1 B1)); eauto.
+    eauto.
+  - (*case rcd*)
+    inverts Val.
+    apply inv_rcd_sub in Typ.
+    destruct Typ as [Typ Sub].
+    eauto.
   - (*mergl*)
     inverts Val.
     apply inv_merge in Typ.
@@ -972,6 +1098,9 @@ Proof.
   try solve [inverts* Typ].
   inverts Typ.
   apply inv_abs_sub'' in Typ1.
+  destruct Typ1; auto.
+  inverts Typ.
+  apply inv_rcd_sub in Typ1.
   destruct Typ1; auto.
   inverts Typ.
   apply inv_merge in Typ1.
@@ -1006,7 +1135,9 @@ Proof.
     apply inv_int in Typ.
     destruct Typ as [Typ Sub]. inverts Sub.
     apply inv_int in Typ.
-    destruct Typ as [Typ Sub]. inverts* Sub.
+    destruct Typ as [Typ Sub]. inverts Sub.
+    apply inv_int in Typ.
+    destruct Typ as [Typ Sub]. inverts Sub.
     eapply typ_sub in H1; eauto.
     forwards*: IHA1 H1.
     eapply typ_sub in H1; eauto.
@@ -1032,12 +1163,37 @@ Proof.
     apply inv_abs_sub'' in Typ.
     destruct Typ as [Typ Sub].
     inverts* Sub.
+    apply inv_abs_sub'' in Typ.
+    destruct Typ as [Typ Sub].
+    inverts* Sub.
     eapply typ_sub in Typ; eauto.
     forwards*: IHA0_1 Typ.
     eapply typ_sub in Typ; eauto.
     forwards*: IHA0_2 Typ.
     apply inv_abs_sub'' in Typ.
     destruct Typ as [Typ  Sub].
+    inverts* Sub.
+    forwards* (p1'&TEMP1): IHA0_1.
+    forwards* (p2'&TEMP2): IHA0_2.
+  - (* case rcd *)
+    gen l A.
+    inductions A0; eauto; intros.
+    apply inv_rcd_sub in Typ.
+    destruct Typ as [Typ Sub]. inverts Sub.
+    inverts Typ.
+    forwards*: pexper_dir_bot_false H. inverts H1.
+    apply inv_rcd_sub in Typ.
+    destruct Typ as [Typ Sub]. inverts Sub.
+    apply inv_rcd_sub in Typ.
+    destruct Typ as [Typ Sub]. inverts* Sub.
+    apply inv_rcd_sub in Typ.
+    destruct Typ as [Typ Sub]. inverts Sub.
+    eapply typ_sub in Typ; eauto.
+    forwards*: IHA0_1 Typ.
+    eapply typ_sub in Typ; eauto.
+    forwards*: IHA0_2 Typ.
+    apply inv_rcd_sub in Typ.
+    destruct Typ as [Typ Sub].
     inverts* Sub.
     forwards* (p1'&TEMP1): IHA0_1.
     forwards* (p2'&TEMP2): IHA0_2.
@@ -1051,9 +1207,29 @@ Proof.
     destruct Typ as [Typ Sub]. inverts Sub.
     apply inv_top in Typ.
     destruct Typ as [Typ Sub]. inverts Sub.
+    apply inv_top in Typ.
+    destruct Typ as [Typ Sub]. inverts Sub.
     forwards* (p1'&TEMP1): IHA1.
     forwards* (p2'&TEMP2): IHA2.
     apply inv_top in Typ.
+    destruct Typ as [Typ Sub]. inverts Sub.
+    forwards* (p1'&TEMP1): IHA1.
+    forwards* (p2'&TEMP2): IHA2.
+  - (* case null *)
+    induction A; eauto; intros.
+    apply inv_null in Typ.
+    destruct Typ as [Typ Sub]. inverts Sub.
+    inverts Typ.
+    forwards*: pexper_dir_bot_false H. inverts H1.
+    apply inv_null in Typ.
+    destruct Typ as [Typ Sub]. inverts Sub.
+    apply inv_null in Typ.
+    destruct Typ as [Typ Sub]. inverts Sub.
+    apply inv_null in Typ.
+    destruct Typ as [Typ Sub]. inverts Sub.
+    forwards* (p1'&TEMP1): IHA1.
+    forwards* (p2'&TEMP2): IHA2.
+    apply inv_null in Typ.
     destruct Typ as [Typ Sub]. inverts Sub.
     forwards* (p1'&TEMP1): IHA1.
     forwards* (p2'&TEMP2): IHA2.
@@ -1074,6 +1250,12 @@ Proof.
     inverts* Sub.
     forwards* : IHVal1 (t_arrow A1 A2).
     forwards* : IHVal2 (t_arrow A1 A2).
+    (* ordinary record type *)
+    apply inv_merge in Typ.
+    destruct Typ as [B1 [B2 [Typ1[Typ2 Sub]]]].
+    inverts* Sub.
+    forwards* : IHVal1 (t_rcd n A).
+    forwards* : IHVal2 (t_rcd n A).
     (*union type*)
     assert (Val: pexpr (e_merg p1 p2)); auto.
     forwards* TEMP4: check_or_typ Typ.
@@ -1094,6 +1276,7 @@ Proof.
   intros v.
   induction v; introv H; try solve [inverts H; inverts H0];
   unfold not; introv STEP; try solve [inverts STEP].
+  - inverts* STEP. inverts* H. inverts* H0.
   - inverts* STEP. inverts* H. inverts* H0. inverts H.
     inverts* H0.
 Qed.
@@ -1117,6 +1300,12 @@ Proof.
   apply inv_top in Typ.
   destruct Typ as [Typ Sub].
   inverts Sub.
+  apply inv_null in Typ.
+  destruct Typ as [Typ Sub].
+  inverts Sub.
+  apply inv_rcd_sub in Typ.
+  destruct Typ as [Typ Sub].
+  inverts Sub.
 Qed.
 
 
@@ -1128,7 +1317,10 @@ Inductive Ord2 : typ -> Prop :=
   | o_int2   : Ord2 t_int
   | o_arrow2 : forall t1 t2, 
                 Ord2 (t_arrow t1 t2)
+  | o_rcd2   : forall l t,
+                Ord2 (t_rcd l t)
   | o_top2   : Ord2 t_top
+  | o_null2  : Ord2 t_null
   | o_and    : forall A B,
                 Ord2 A ->
                 Ord2 B ->
@@ -1178,6 +1370,14 @@ Proof.
     forwards* TEMP1: ord2_sub_bot_false B. inverts TEMP1.
   - (*case top*)
     forwards* TEMP1: ord2_sub_bot_false B. inverts TEMP1.
+  - (*case null*)
+    forwards* TEMP1: ord2_sub_bot_false B. inverts TEMP1.
+  - (*case rcd*)
+    inverts VAL. inverts H.
+    apply inv_rcd_sub in Typ.
+    destruct Typ as [Typ Sub1].
+    forwards*: ord2_sub_bot_false B.
+    inverts H.
 Qed.
 
 Lemma pty_ord : forall v A,
@@ -1209,6 +1409,8 @@ Lemma pexpr_ptyp_infer : forall v A,
 Proof.
   induction 1; introv Typ; eauto.
   apply inv_abs_sub'' in Typ.
+  destruct Typ; eauto.
+  apply inv_rcd_sub in Typ.
   destruct Typ; eauto.
   apply inv_merge in Typ.
   destruct Typ as [B1 [B2 [Typ1 [Typ2 Sub]]]]; eauto.
@@ -1291,6 +1493,8 @@ Proof.
           forwards*: getInTypeInv' H0.
           forwards*: pexpr_ptyp_infer H.
         }
+  - (*prj*)
+    admit.
   - (*switch*)
     inverts* Red.
     (* when lies in first branch *)
@@ -1326,7 +1530,7 @@ Proof.
     specialize (TEMP1 A).
     simpl_env in *.
     forwards*: TEMP1.
-Qed.
+Admitted.
 
 Lemma pexpr_dec : forall e, lc_exp e -> pexpr e \/ ~ pexpr e.
 Proof.
@@ -1335,8 +1539,12 @@ inductions e; try solve [right; unfold not; introv TEMP; inversion TEMP].
   - left*.
   - left*.
   - inverts lc.
+    destruct~ IHe.
+    all: try solve [right; unfold not; introv TEMP; inverts TEMP; eauto].
+  - inverts lc.
     destruct~ IHe1; destruct~ IHe2.
     all: try solve [right; unfold not; introv TEMP; inverts TEMP; eauto].
+  - left*.
   - left*.
 Qed.
 
@@ -1345,6 +1553,10 @@ Proof.
 introv lc.
 inductions e; eauto;
 try solve [right; unfold not; introv TEMP; inverts TEMP; inverts H].
+destruct~ IHe; inverts* lc;
+try solve [inverts* H; inverts* H0].
+  right. unfold not. intros.
+  inverts H0. inverts H2. auto.
 destruct~ IHe1; destruct~ IHe2; inverts* lc;
 try solve [inverts* H; inverts* H0].
   - right. unfold not. intros.
@@ -1374,9 +1586,11 @@ Qed.
 Fixpoint t_size (A:typ) : nat :=
   match A with
   | t_top => 1
+  | t_null => 1
   | t_int => 1
   | t_bot => 1
   | t_arrow A B => 1 + t_size A + t_size B
+  | t_rcd _ A => 1 + t_size A
   | t_union A B => 1 + t_size A + t_size B
   | t_and A B => 1 + t_size A + t_size B
   end.
@@ -1393,6 +1607,8 @@ Proof.
     right; introv Sub. inverts Sub.
     right; introv Sub. inverts Sub.
     right; introv Sub. inverts Sub.
+    right; introv Sub. inverts Sub.
+    right; introv Sub. inverts Sub.
     simpl in *.
     destruct IHB1; destruct IHB2; auto; simpl in *.
     lia. lia. lia. lia. lia.
@@ -1403,6 +1619,45 @@ Proof.
     right; introv Sub. inverts* Sub. lia.
     right; introv Sub. inverts* Sub.
     right; introv Sub. inverts* Sub.
+  }
+  1: { (*null case*)
+    induction B; eauto.
+    right. intros Sub. inverts* Sub.
+    right. intros Sub. inverts* Sub.
+    right. intros Sub. inverts* Sub.
+    right. intros Sub. inverts* Sub.
+    destruct IHB1; destruct IHB2; simpl in *; auto;
+    try solve [lia].
+    right. introv Sub. inverts* Sub.
+    destruct IHB1; destruct IHB2; simpl in *; auto;
+    try solve [lia].
+    right. introv Sub. inverts* Sub.
+    right. introv Sub. inverts* Sub.
+    right. introv Sub. inverts* Sub.
+  }
+  3: { (*rcd case*)
+    induction B; eauto.
+    right. intros Sub. inverts* Sub.
+    right. intros Sub. inverts* Sub.
+    right. intros Sub. inverts* Sub.
+    right. intros Sub. inverts* Sub.
+    simpl in *.
+    specialize (IHA B).
+    destruct IHA; auto; simpl in *;
+    try solve [lia].
+    destruct (n0 == n1); subst; auto.
+    right. introv Sub. inverts* Sub.
+    right. introv Sub. inverts* Sub.
+    clear IHA.
+    destruct IHB1; destruct IHB2; simpl in *; auto;
+    try solve [lia].
+    right. introv Sub. inverts* Sub.
+    clear IHA.
+    destruct IHB1; destruct IHB2; simpl in *; auto;
+    try solve [lia].
+    right. introv Sub. inverts* Sub.
+    right. introv Sub. inverts* Sub.
+    right. introv Sub. inverts* Sub.
   }
   3: { (*union case*)
     specialize (IHA1 B). specialize (IHA2 B).
@@ -1419,6 +1674,11 @@ Proof.
   3: { (*and case*)
     simpl in *.
     induction B; auto; unfold not in *.
+    specialize (IHA1 t_null).
+    specialize (IHA2 t_null).
+    destruct IHA1; destruct IHA2; auto;
+    try solve [lia].
+    right; introv Sub. inverts* Sub.
     specialize (IHA1 t_int).
     specialize (IHA2 t_int).
     destruct IHA1; destruct IHA2; auto;
@@ -1431,6 +1691,11 @@ Proof.
     right; introv Sub. inverts* Sub.
     specialize (IHA1 (t_arrow B1 B2)).
     specialize (IHA2 (t_arrow B1 B2)).
+    destruct IHA1; destruct IHA2; auto;
+    try solve [lia].
+    right; introv Sub. inverts* Sub.
+    specialize (IHA1 (t_rcd n0 B)).
+    specialize (IHA2 (t_rcd n0 B)).
     destruct IHA1; destruct IHA2; auto;
     try solve [lia].
     right; introv Sub. inverts* Sub.
@@ -1457,12 +1722,14 @@ Proof.
     induction B; eauto.
     right. intros Sub. inverts* Sub.
     right. intros Sub. inverts* Sub.
+    right. intros Sub. inverts* Sub.
     clear IHB1 IHB2.
     simpl in *.
     specialize (IHn B1 A1).
     specialize (IHA2 B2).
     destruct IHn; destruct IHA2; auto; simpl in *;
     try solve [lia].
+    right. introv Sub. inverts* Sub.
     right. introv Sub. inverts* Sub.
     right. introv Sub. inverts* Sub.
     right. introv Sub. inverts* Sub.
@@ -1479,6 +1746,8 @@ Proof.
   }
   1: { (*case int*)
     induction B; eauto.
+    right. intros Sub. inverts* Sub.
+    right. intros Sub. inverts* Sub.
     right. intros Sub. inverts* Sub.
     right. intros Sub. inverts* Sub.
     destruct IHB1; destruct IHB2; simpl in *; auto;
@@ -1581,8 +1850,14 @@ intros EQ; subst
         inverts H0.
         apply tred_progress_dir in Typ3; auto.
         destruct Typ3 as [v' Tred]. eauto.
+        (*rcd infers arrow*)
+        apply inv_rcd_sub in Typ1.
+        destruct Typ1. inverts H2.
         (*top infers arrow*)
         apply inv_top in Typ1.
+        destruct Typ1. inverts H1.
+        (*null infers arrow*)
+        apply inv_null in Typ1.
         destruct Typ1. inverts H1.
         (*merge infers arrow*)
         inverts H0.
@@ -1594,6 +1869,15 @@ intros EQ; subst
     forwards*: typing_regular Typ2.
 (*case typ-abs*)
  - left. forwards*: typing_regular Typ'.
+(*case typ-rcd*)
+ - forwards*: IHTyp.
+   destruct H; destruct~ H.
+   right.
+   exists (e_rcd l x A).
+   apply step_rcd; auto.
+   forwards*: typing_regular Typ.
+(*case typ-prj*)
+ - right. admit.
 (*case typ-merge*)
  - 
    forwards* TEMP1: IHTyp1.
@@ -1638,4 +1922,4 @@ intros EQ; subst
    apply step_fix.
    apply typing_regular in Typ'.
    destruct~ Typ'.
-Qed.
+Admitted.

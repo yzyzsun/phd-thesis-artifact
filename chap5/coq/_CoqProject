@@ -1,5 +1,5 @@
 -R . Top
-equivalence.v
 LibTactics.v
+equivalence.v
 syntax.v
 typing.v
