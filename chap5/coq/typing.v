@@ -232,11 +232,11 @@ Inductive tred : exp -> typ -> exp -> Prop := (*typed red*)
  | tred_arrow : forall e A1 B1 A2 B2,
     lc_exp (e_abs e A1 B1) ->
     (t_arrow A1 B1) <: (t_arrow A2 B2) ->
-    tred (e_abs e A1 B1) (t_arrow A2 B2) (e_abs e A1 B1)
+    tred (e_abs e A1 B1) (t_arrow A2 B2) (e_abs e A1 B2)
  | tred_rcd : forall l e A B,
     lc_exp (e_rcd l e A) ->
     (t_rcd l A) <: (t_rcd l B) ->
-    tred (e_rcd l e A) (t_rcd l B) (e_rcd l e A)
+    tred (e_rcd l e A) (t_rcd l B) (e_rcd l e B)
  | tred_mergev1 : forall p1 p2 p1' A,
     lc_exp p2 ->
     Ord A ->
@@ -362,7 +362,8 @@ Inductive step : exp -> exp -> Prop :=    (* defn step *)
      step (e_prj e l) (e_prj e' l)
  | step_prjv : forall (l:nat) (v v':exp) (A:typ),
      value v ->
-     step (e_prj (e_rcd l v A) l) v
+     tred v A v' ->
+     step (e_prj (e_rcd l v A) l) v'
  | step_prjm : forall (l:nat) (v1 v2 v:exp),
      value (e_merg v1 v2) ->
      project (e_prj (e_merg v1 v2) l) v ->
@@ -767,6 +768,8 @@ pexpr v -> tred v A w -> pexpr w.
 Proof.
   intros.
   induction H0; eauto.
+  - inverts* H0.
+  - inverts* H.
   - inverts* H.
   - inverts* H.
 Qed.
@@ -781,6 +784,16 @@ Proof.
   introv Val Red1.
   forwards* LC: prevalue_regular Val.
   inductions Red1; introv Ord Red2; eauto.
+  - (*case arrow*)
+    inductions Red2; auto; try inverts Ord.
+    applys* tred_arrow.
+    inverts H2. inverts H0.
+    forwards*: sub_transitivity H9 H8.
+  - (*case rcd*)
+    inductions Red2; auto; try inverts Ord.
+    applys* tred_rcd.
+    inverts H2. inverts H0.
+    forwards*: sub_transitivity H3 H4.
   - (*case merg1*)
     inverts Val. inverts LC.
     inductions Red2; eauto.
@@ -1046,6 +1059,24 @@ Proof.
     forwards* [Typ3 | Typ4]: IHVal2.
 Qed.
 
+Lemma typ_abs_sub : forall G e A B C D,
+  typing G (e_abs e A B) D ->
+  subtyping B C ->
+  typing G (e_abs e A C) (t_arrow A C).
+Proof.
+  introv Typ Sub.
+  inductions Typ; eauto.
+Qed.
+
+Lemma typ_rcd_sub : forall G l e A B C,
+  typing G (e_rcd l e A) C ->
+  subtyping A B ->
+  typing G (e_rcd l e B) (t_rcd l B).
+Proof.
+  introv Typ Sub.
+  inductions Typ; eauto.
+Qed.
+
 (*********************************)
 
 Lemma pexpr_ptype_sub_dir_type : forall w A,
@@ -1103,12 +1134,14 @@ Proof.
     forwards*: typing_regular Typ. destruct H1.
     apply inv_abs_sub'' in Typ.
     destruct Typ as [Typ Sub].
-    eauto.
+    inverts H0.
+    forwards*: typ_abs_sub.
   - (*case rcd*)
     inverts Val.
     apply inv_rcd_sub in Typ.
     destruct Typ as [Typ Sub].
-    eauto.
+    inverts H0.
+    forwards*: typ_rcd_sub.
   - (*mergl*)
     inverts Val.
     apply inv_merge in Typ.
@@ -1531,7 +1564,8 @@ Proof.
     inverts* Red.
     + apply inv_rcd in Typ.
       destruct Typ as [Typ Sub].
-      inverts* Sub.
+      inverts Sub. inverts H1.
+      forwards*: tred_preservation_infer H H3.
     + inductions H3.
       * apply inv_merge in Typ.
         destruct Typ as [T1 [T2 [Typ1 [Typ2 Sub]]]].
@@ -1993,8 +2027,9 @@ intros EQ; subst
       * apply inv_rcd_sub in Typ.
         destruct Typ as [Typ Sub].
         inverts Sub.
-        exists e0.
-        applys* step_prjv.
+        apply inv_rcd in Typ.
+        destruct Typ as [Typ Sub].
+        forwards*: tred_progress_dir H Typ.
       * apply inv_top in Typ.
         destruct Typ. inverts H0.
       * apply inv_null in Typ.
